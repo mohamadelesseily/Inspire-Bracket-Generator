@@ -47,6 +47,10 @@ export interface Match {
   bracketType?: BracketType;
   manuallyEdited?: boolean;
   manualWinnerId?: string | null;
+  scheduleRoundLabel?: string;
+  scheduledTime?: string;
+  durationMinutes?: number;
+  screenNumber?: number;
 }
 
 export interface Tournament {

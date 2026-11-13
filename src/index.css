@@ -314,21 +314,17 @@ body {
 }
 
 .group-workspace {
-  display: grid;
-  grid-template-columns: minmax(21rem, 0.85fr) minmax(31rem, 1.15fr);
-  gap: 1rem;
-  min-width: 980px;
-  height: clamp(25rem, calc(100vh - 22rem), 40rem);
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-width: 0;
 }
 
 .group-standings-panel,
 .group-matches-panel {
   min-width: 0;
-  height: 100%;
-  overflow: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-  scrollbar-color: #52525b #18181b;
+  width: 100%;
+  overflow: visible;
   padding: 0.1rem 0.35rem 0.5rem 0.05rem;
 }
 
@@ -359,25 +355,43 @@ body {
 }
 
 .group-match-card {
+  width: 100%;
   min-width: 0;
-  padding: 1rem !important;
+  padding: 1.25rem !important;
   border-radius: 1rem;
 }
 
-@media (max-width: 900px) {
-  .group-stage-layout {
-    overflow-x: auto;
-    padding-bottom: 0.5rem;
+.group-match-player-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 1rem;
+}
+
+.group-match-player-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+
+.group-match-score-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+@media (max-width: 640px) {
+  .group-match-player-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.75rem;
   }
 
-  .group-workspace {
-    height: clamp(25rem, calc(100vh - 22rem), 40rem);
+  .group-match-player-name {
+    text-align: center;
+  }
+
+  .group-match-score-controls {
+    justify-content: center;
   }
 }
 
-@media (max-height: 700px) {
-  .group-workspace {
-    height: calc(100vh - 19rem);
-    min-height: 22rem;
-  }
-}

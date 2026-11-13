@@ -4,9 +4,10 @@ import { useTournamentStore } from '../store/useTournamentStore';
 import { Button, Card } from '../components/ui/Common';
 import { Link } from 'react-router-dom';
 import { createDemoTournament, DEMO_TOURNAMENT_NAME } from '../logic/demoTournament';
+import { createCDPFifa27Schedule, createCDPFifa27Tournament, CDP_FIFA_27_NAME } from '../logic/cdpFifa27Tournament';
 
 export const Dashboard = () => {
-  const { tournaments, loadTournaments, userRole, addTournament, deleteTournament } = useTournamentStore();
+  const { tournaments, loadTournaments, userRole, addTournament, updateTournament, deleteTournament } = useTournamentStore();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -19,6 +20,33 @@ export const Dashboard = () => {
         <h1 className="text-4xl font-bold text-primary">Tournament Dashboard</h1>
         {userRole === 'ORGANIZER' && (
           <div className="flex gap-3">
+            <Button variant="secondary" onClick={() => {
+              const existing = tournaments.find(tournament => tournament.name === CDP_FIFA_27_NAME);
+              const tournament = existing ?? createCDPFifa27Tournament();
+              if (!existing) addTournament(tournament);
+              else if (!(existing.groupMatches ?? []).some(match => match.scheduledTime)) {
+                const newSchedule = createCDPFifa27Schedule(existing.groups);
+                const migratedMatches = newSchedule.map(fixture => {
+                  const group = existing.groups.find(item => item.participantIds.includes(fixture.participant1Id ?? ''));
+                  const oldMatch = (existing.groupMatches ?? []).find(match =>
+                    Boolean(group && match.id.startsWith(`match-${group.id}-`)) &&
+                    [match.participant1Id, match.participant2Id].includes(fixture.participant1Id) &&
+                    [match.participant1Id, match.participant2Id].includes(fixture.participant2Id)
+                  );
+                  return oldMatch ? {
+                    ...oldMatch,
+                    round: fixture.round,
+                    position: fixture.position,
+                    scheduleRoundLabel: fixture.scheduleRoundLabel,
+                    scheduledTime: fixture.scheduledTime,
+                    durationMinutes: fixture.durationMinutes,
+                    screenNumber: fixture.screenNumber
+                  } : fixture;
+                });
+                updateTournament({ ...existing, groupMatches: migratedMatches });
+              }
+              navigate(`/tournament/${tournament.id}/groups/edit`);
+            }}>Create CDP FIFA 27</Button>
             <Button variant="secondary" onClick={() => {
               const existingDemo = tournaments.find(tournament => tournament.name === DEMO_TOURNAMENT_NAME);
               const demo = existingDemo ?? createDemoTournament();

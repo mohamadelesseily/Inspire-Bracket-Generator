@@ -76,6 +76,18 @@ const thirdPlaceReason = (
     : `Outside the top ${qualifierCount}; the configured tie-breakers place it below the cutoff.`;
 };
 
+const formatScheduledTime = (time: string, durationMinutes: number) => {
+  const [hour, minute] = time.split(':').map(Number);
+  const format = (totalMinutes: number) => {
+    const normalized = ((totalMinutes % (24 * 60)) + (24 * 60)) % (24 * 60);
+    const hour24 = Math.floor(normalized / 60);
+    const suffix = hour24 >= 12 ? 'PM' : 'AM';
+    const hour12 = hour24 % 12 || 12;
+    return `${hour12}:${String(normalized % 60).padStart(2, '0')} ${suffix}`;
+  };
+  return `${format(hour * 60 + minute)}–${format(hour * 60 + minute + durationMinutes)}`;
+};
+
 export const GroupStage = () => {
   const { id } = useParams();
   const { tournaments, updateTournament, userRole } = useTournamentStore();
@@ -162,7 +174,6 @@ export const GroupStage = () => {
     const toGroup = tournament.groups.find(group => group.id === toGroupId);
     if (!fromGroup || !toGroup) return;
     if (fromGroup.participantIds.length <= 2) return alert('Each group must keep at least two participants.');
-    if (toGroup.participantIds.length >= (tournament.config.groupSize ?? 4)) return alert(`${toGroup.name} has reached its configured capacity.`);
     if ((tournament.groupMatches?.length ?? 0) > 0 && !window.confirm('Moving a participant will clear the current group schedule, results, and knockout bracket. Continue?')) return;
     const groups = tournament.groups.map(group => group.id === fromGroupId
       ? { ...group, participantIds: group.participantIds.filter(id => id !== participantId) }
@@ -299,6 +310,7 @@ export const GroupStage = () => {
             <p className="text-accent-grey">Group Stage Management</p>
           </div>
         </div>
+        {userRole === 'ORGANIZER' && tournament.groups.length > 0 && <Link to={`/tournament/${tournament.id}/groups/edit`}><Button variant="secondary">Edit groups</Button></Link>}
         {tournament.groups.length === 0 && (
           <RoleGuard allowedRoles={['ORGANIZER']}>
             <Button onClick={handleGenerateGroups}>Generate Groups & Matches</Button>
@@ -359,7 +371,15 @@ export const GroupStage = () => {
                   className="group-standings-card"
                 >
                   <div className="flex justify-between items-center mb-4">
-                    <span className="text-xl font-bold text-primary">{group.name}</span>
+                    {userRole === 'ORGANIZER' && tournament.status === 'DRAFT' ? <input
+                      aria-label={`Name for ${group.name}`}
+                      value={group.name}
+                      onChange={event => updateTournament({
+                        ...tournament,
+                        groups: tournament.groups.map(item => item.id === group.id ? { ...item, name: event.target.value } : item)
+                      })}
+                      className="min-w-0 bg-transparent text-xl font-bold text-primary border-b border-transparent hover:border-zinc-700 focus:border-primary focus:outline-none"
+                    /> : <span className="text-xl font-bold text-primary">{group.name}</span>}
                     <span className="text-xs text-accent-grey">{group.participantIds.length} Players</span>
                   </div>
                   <div className="group-standings-table-wrap"><table className="w-full text-sm">
@@ -466,42 +486,50 @@ export const GroupStage = () => {
                   <Button onClick={() => saveGroupSchedule(selectedGroupId)}>Save schedule</Button>
                 </div>
               )}
-              <div className="group-match-grid grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="group-match-grid grid grid-cols-1 gap-4">
                 {[...activeMatches]
-                  .sort((a, b) => a.position - b.position)
+                  .sort((a, b) => (a.scheduledTime ?? '').localeCompare(b.scheduledTime ?? '') || a.position - b.position)
                   .map((match, matchIndex) => (
                     <Card key={match.id} className="group-match-card flex flex-col space-y-4">
                       <div className="flex justify-between items-center mb-2">
-                        <span className="text-xs text-accent-grey">Match {match.position + 1}</span>
+                        <div>
+                          <span className="block text-sm font-semibold text-accent-white">Match {matchIndex + 1}</span>
+                        </div>
                         <span className={`text-xs px-2 py-1 rounded ${match.status === 'COMPLETED' ? 'bg-green-900 text-green-300' : 'bg-zinc-800 text-accent-grey'}`}>
                           {match.manuallyEdited ? 'MANUAL · ' : ''}{scoreDrafts[match.id] ? 'IN PROGRESS' : match.status}
                         </span>
                       </div>
-                      <div className="flex items-center justify-between gap-4">
+                      <div className="group-match-player-row">
                         {userRole === 'ORGANIZER' && tournament.status === 'DRAFT' ? (
                           <select
                             value={match.participant1Id ?? ''}
                             onChange={event => updateFixtureDraft(selectedGroupId!, match.id, 1, event.target.value)}
-                            className="min-w-0 flex-1 bg-zinc-950 border border-zinc-800 rounded px-1 py-1 text-xs"
+                            className="min-w-0 w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-sm text-accent-white"
                             aria-label="First participant"
                           >
                             {selectedGroup?.participantIds.map(participantId => (
                               <option key={participantId} value={participantId}>{tournament.participants.find(p => p.id === participantId)?.name}</option>
                             ))}
                           </select>
-                        ) : <div className="flex-1 text-right font-medium">{tournament.participants.find(p => p.id === match.participant1Id)?.name}</div>}
-                        <div className="flex gap-2">
-                          <ScoreStepper
-                            value={scoreDrafts[match.id]?.[0] ?? match.score1}
-                            onChange={(value) => setScoreDrafts(current => ({ ...current, [match.id]: [value, current[match.id]?.[1] ?? match.score2] }))}
-                            disabled={userRole === 'VIEWER' || (tournament.status === 'DRAFT' && !groupMatchesComplete(tournament))}
-                          />
-                          <span className="text-zinc-600">-</span>
-                          <ScoreStepper
-                            value={scoreDrafts[match.id]?.[1] ?? match.score2}
-                            onChange={(value) => setScoreDrafts(current => ({ ...current, [match.id]: [current[match.id]?.[0] ?? match.score1, value] }))}
-                            disabled={userRole === 'VIEWER' || (tournament.status === 'DRAFT' && !groupMatchesComplete(tournament))}
-                          />
+                        ) : <div className="group-match-player-name text-right">{tournament.participants.find(p => p.id === match.participant1Id)?.name ?? 'TBD'}</div>}
+                        <div className="flex flex-col items-center gap-2">
+                          <div className="group-match-score-controls">
+                            <ScoreStepper
+                              value={scoreDrafts[match.id]?.[0] ?? match.score1}
+                              onChange={(value) => setScoreDrafts(current => ({ ...current, [match.id]: [value, current[match.id]?.[1] ?? match.score2] }))}
+                              disabled={userRole === 'VIEWER' || (tournament.status === 'DRAFT' && !groupMatchesComplete(tournament))}
+                            />
+                            <span className="text-zinc-600">-</span>
+                            <ScoreStepper
+                              value={scoreDrafts[match.id]?.[1] ?? match.score2}
+                              onChange={(value) => setScoreDrafts(current => ({ ...current, [match.id]: [current[match.id]?.[0] ?? match.score1, value] }))}
+                              disabled={userRole === 'VIEWER' || (tournament.status === 'DRAFT' && !groupMatchesComplete(tournament))}
+                            />
+                          </div>
+                          {match.scheduledTime && <span className="text-xs font-medium text-accent-grey">
+                            {formatScheduledTime(match.scheduledTime, match.durationMinutes ?? 20)}
+                            {match.screenNumber ? ` · Screen ${match.screenNumber}` : ''}
+                          </span>}
                         </div>
                         {userRole === 'ORGANIZER' && tournament.status === 'DRAFT' ? (
                           <select
@@ -514,7 +542,7 @@ export const GroupStage = () => {
                               <option key={participantId} value={participantId}>{tournament.participants.find(p => p.id === participantId)?.name}</option>
                             ))}
                           </select>
-                        ) : <div className="flex-1 text-left font-medium">{tournament.participants.find(p => p.id === match.participant2Id)?.name}</div>}
+                        ) : <div className="group-match-player-name">{tournament.participants.find(p => p.id === match.participant2Id)?.name ?? 'TBD'}</div>}
                       </div>
                       {userRole === 'ORGANIZER' && tournament.status === 'DRAFT' && (
                         <div className="flex justify-between items-center">

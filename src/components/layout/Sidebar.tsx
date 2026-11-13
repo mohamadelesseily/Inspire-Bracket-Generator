@@ -1,5 +1,5 @@
 import { Link, useParams } from 'react-router-dom';
-import { LayoutDashboard, Settings, Users, Trophy, UserRound } from 'lucide-react';
+import { LayoutDashboard, Settings, Users, Trophy, UserRound, Pencil } from 'lucide-react';
 import { useTournamentStore } from '../../store/useTournamentStore';
 
 export const Sidebar = () => {
@@ -12,6 +12,7 @@ export const Sidebar = () => {
     ...(userRole === 'ORGANIZER' ? [{ name: 'Setup', path: '/setup', icon: Settings }] : []),
     ...(id ? [{ name: 'Participants', path: `/tournament/${id}/participants`, icon: UserRound }] : []),
     ...(tournament?.format === 'GROUP_SINGLE' ? [{ name: 'Groups', path: `/tournament/${id}/groups`, icon: Users }] : []),
+    ...(tournament?.format === 'GROUP_SINGLE' && userRole === 'ORGANIZER' ? [{ name: 'Edit groups', path: `/tournament/${id}/groups/edit`, icon: Pencil }] : []),
     { name: 'Bracket', path: id ? `/tournament/${id}/bracket` : '#', icon: Trophy },
   ];
 

@@ -5,6 +5,7 @@ import { TournamentSetup } from './pages/TournamentSetup';
 import { GroupStage } from './pages/GroupStage';
 import { BracketView } from './pages/BracketView';
 import { ParticipantManagement } from './pages/ParticipantManagement';
+import { GroupEditor } from './pages/GroupEditor';
 import { useTournamentStore } from './store/useTournamentStore';
 import { Button, Card } from './components/ui/Common';
 import { AppShell } from './components/layout/AppShell';
@@ -77,6 +78,7 @@ function App() {
               <Route path="tournament/:id/participants" element={<ParticipantManagement />} />
               <Route path="tournament/:id" element={<TournamentLandingRedirect />} />
               <Route path="tournament/:id/groups" element={<GroupStage />} />
+              <Route path="tournament/:id/groups/edit" element={<GroupEditor />} />
               <Route path="tournament/:id/bracket" element={<BracketView />} />
               <Route path="*" element={<Navigate to="/dashboard" />} />
             </Routes>
