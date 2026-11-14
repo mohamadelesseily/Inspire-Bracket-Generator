@@ -5,6 +5,7 @@ import { Button, Card } from '../components/ui/Common';
 import { Link } from 'react-router-dom';
 import { createDemoTournament, DEMO_TOURNAMENT_NAME } from '../logic/demoTournament';
 import { createCDPFifa27Schedule, createCDPFifa27Tournament, CDP_FIFA_27_NAME } from '../logic/cdpFifa27Tournament';
+import { bracketLogic } from '../logic/bracketGenerator';
 
 export const Dashboard = () => {
   const { tournaments, loadTournaments, userRole, addTournament, updateTournament, deleteTournament } = useTournamentStore();
@@ -24,17 +25,20 @@ export const Dashboard = () => {
               const existing = tournaments.find(tournament => tournament.name === CDP_FIFA_27_NAME);
               const tournament = existing ?? createCDPFifa27Tournament();
               if (!existing) addTournament(tournament);
-              else if (!(existing.groupMatches ?? []).some(match => match.scheduledTime)) {
-                const newSchedule = createCDPFifa27Schedule(existing.groups);
+              else {
+                const newSchedule = createCDPFifa27Schedule(existing.groups, existing.participants);
                 const migratedMatches = newSchedule.map(fixture => {
-                  const group = existing.groups.find(item => item.participantIds.includes(fixture.participant1Id ?? ''));
                   const oldMatch = (existing.groupMatches ?? []).find(match =>
-                    Boolean(group && match.id.startsWith(`match-${group.id}-`)) &&
-                    [match.participant1Id, match.participant2Id].includes(fixture.participant1Id) &&
-                    [match.participant1Id, match.participant2Id].includes(fixture.participant2Id)
+                    (match.participant1Id === fixture.participant1Id && match.participant2Id === fixture.participant2Id) ||
+                    (match.participant1Id === fixture.participant2Id && match.participant2Id === fixture.participant1Id)
                   );
+                  const reversed = oldMatch?.participant1Id === fixture.participant2Id;
                   return oldMatch ? {
                     ...oldMatch,
+                    ...fixture,
+                    score1: reversed ? oldMatch.score2 : oldMatch.score1,
+                    score2: reversed ? oldMatch.score1 : oldMatch.score2,
+                    winnerId: oldMatch.winnerId,
                     round: fixture.round,
                     position: fixture.position,
                     scheduleRoundLabel: fixture.scheduleRoundLabel,
@@ -43,7 +47,12 @@ export const Dashboard = () => {
                     screenNumber: fixture.screenNumber
                   } : fixture;
                 });
-                updateTournament({ ...existing, groupMatches: migratedMatches });
+                const scheduleChanged = migratedMatches.some(match => {
+                  const oldMatch = existing.groupMatches?.find(item => item.id === match.id);
+                  return !oldMatch || oldMatch.scheduledTime !== match.scheduledTime || oldMatch.screenNumber !== match.screenNumber ||
+                    oldMatch.participant1Id !== match.participant1Id || oldMatch.participant2Id !== match.participant2Id;
+                });
+                if (scheduleChanged) updateTournament({ ...existing, groupMatches: migratedMatches });
               }
               navigate(`/tournament/${tournament.id}/groups/edit`);
             }}>Create CDP FIFA 27</Button>
@@ -101,10 +110,45 @@ export const Dashboard = () => {
                 <Button variant="secondary" className="w-full">View Details</Button>
               </Link>
               {userRole === 'ORGANIZER' && (
-                <div className="mt-2 flex gap-2">
+                <div className="mt-2 flex flex-wrap gap-2">
                   <Link to={`/tournament/${t.id}/participants`} className="flex-1">
                     <Button variant="secondary" className="w-full">Manage Participants</Button>
                   </Link>
+                  <Button variant="secondary" className="flex-1" onClick={() => {
+                    if (!window.confirm(`Restart “${t.name}”? This clears all scores and tournament results.`)) return;
+                    const groupMatches = (t.groupMatches ?? []).map(match => ({
+                      ...match,
+                      score1: 0,
+                      score2: 0,
+                      winnerId: null,
+                      manualWinnerId: null,
+                      status: 'SCHEDULED' as const
+                    }));
+                    const bracket = t.format === 'GROUP_SINGLE' ? [] : bracketLogic.recalculate(t.bracket.map(match => {
+                      const winnerId = match.round === 1 && match.bracketType === 'UPPER' && (match.participant1Id ?? match.participant2Id) &&
+                        (!match.participant1Id || !match.participant2Id)
+                        ? match.participant1Id ?? match.participant2Id
+                        : null;
+                      return {
+                        ...match,
+                        score1: 0,
+                        score2: 0,
+                        winnerId,
+                        manualWinnerId: null,
+                        status: winnerId ? 'COMPLETED' as const : 'SCHEDULED' as const
+                      };
+                    }));
+                    updateTournament({
+                      ...t,
+                      participants: t.participants.map(participant => ({ ...participant, points: 0, wins: 0, losses: 0 })),
+                      groups: t.groups.map(group => ({ ...group, standings: [] })),
+                      groupMatches,
+                      bracket,
+                      qualifiedParticipantIds: [],
+                      qualificationOverrides: undefined,
+                      status: 'DRAFT'
+                    });
+                  }}>Restart Tournament</Button>
                   <Button variant="danger" onClick={() => {
                     if (window.confirm(`Delete “${t.name}” and all its matches? This cannot be undone.`)) deleteTournament(t.id);
                   }}>Delete</Button>

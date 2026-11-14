@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useTournamentStore } from '../store/useTournamentStore';
 import { groupLogic } from '../logic/groupGenerator';
@@ -8,6 +8,7 @@ import { RoleGuard } from '../components/RoleGuard';
 import type { Match } from '../types/tournament';
 import { getBestThirdPlaceQualifierCount, getGroupStandings, groupMatchesComplete, qualifyGroupParticipants, rankThirdPlaceParticipants } from '../logic/qualification';
 import { bracketLogic, bracketSizeGuidance, isPowerOfTwoBracketSize } from '../logic/bracketGenerator';
+import { createCDPFifa27Schedule, CDP_FIFA_27_NAME } from '../logic/cdpFifa27Tournament';
 import { v4 as uuidv4 } from 'uuid';
 
 const buildGroupSchedule = (groups: ReturnType<typeof groupLogic.generateGroups>, matchesPerParticipant: number): Match[] => {
@@ -81,11 +82,16 @@ const formatScheduledTime = (time: string, durationMinutes: number) => {
   const format = (totalMinutes: number) => {
     const normalized = ((totalMinutes % (24 * 60)) + (24 * 60)) % (24 * 60);
     const hour24 = Math.floor(normalized / 60);
-    const suffix = hour24 >= 12 ? 'PM' : 'AM';
-    const hour12 = hour24 % 12 || 12;
-    return `${hour12}:${String(normalized % 60).padStart(2, '0')} ${suffix}`;
+    return {
+      time: `${hour24 % 12 || 12}:${String(normalized % 60).padStart(2, '0')}`,
+      suffix: hour24 >= 12 ? 'PM' : 'AM'
+    };
   };
-  return `${format(hour * 60 + minute)}–${format(hour * 60 + minute + durationMinutes)}`;
+  const start = format(hour * 60 + minute);
+  const end = format(hour * 60 + minute + durationMinutes);
+  return start.suffix === end.suffix
+    ? `${start.time}–${end.time} ${end.suffix}`
+    : `${start.time} ${start.suffix}–${end.time} ${end.suffix}`;
 };
 
 export const GroupStage = () => {
@@ -96,6 +102,41 @@ export const GroupStage = () => {
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [scoreDrafts, setScoreDrafts] = useState<Record<string, [number, number]>>({});
   const [scheduleDrafts, setScheduleDrafts] = useState<Record<string, Match[]>>({});
+
+  useEffect(() => {
+    if (!tournament || tournament.groups.length !== 16 ||
+      tournament.groups.some(group => group.participantIds.length !== 3) || (tournament.groupMatches?.length ?? 0) !== 48) return;
+    const groupA = tournament.groups.find(group => group.name.toLocaleLowerCase() === 'group a');
+    const groupANames = new Set((groupA?.participantIds ?? []).map(participantId =>
+      tournament.participants.find(participant => participant.id === participantId)?.name.toLocaleLowerCase()
+    ));
+    const isCDPSchedule = tournament.name === CDP_FIFA_27_NAME ||
+      (groupANames.has('mark peter') && groupANames.has('karim barakat') && groupANames.has('ahmed hassan'));
+    if (!isCDPSchedule) return;
+
+    const fixtures = createCDPFifa27Schedule(tournament.groups, tournament.participants);
+    const scheduledMatches = fixtures.map(fixture => {
+      const oldMatch = tournament.groupMatches?.find(match =>
+        (match.participant1Id === fixture.participant1Id && match.participant2Id === fixture.participant2Id) ||
+        (match.participant1Id === fixture.participant2Id && match.participant2Id === fixture.participant1Id)
+      );
+      if (!oldMatch) return fixture;
+      const reversed = oldMatch.participant1Id === fixture.participant2Id;
+      return {
+        ...oldMatch,
+        ...fixture,
+        score1: reversed ? oldMatch.score2 : oldMatch.score1,
+        score2: reversed ? oldMatch.score1 : oldMatch.score2,
+        winnerId: oldMatch.winnerId
+      };
+    });
+    const scheduleChanged = scheduledMatches.some(match => {
+      const oldMatch = tournament.groupMatches?.find(item => item.id === match.id);
+      return !oldMatch || oldMatch.scheduledTime !== match.scheduledTime || oldMatch.screenNumber !== match.screenNumber ||
+        oldMatch.participant1Id !== match.participant1Id || oldMatch.participant2Id !== match.participant2Id;
+    });
+    if (scheduleChanged) updateTournament({ ...tournament, groupMatches: scheduledMatches });
+  }, [tournament, updateTournament]);
 
   if (!tournament) return <div className="text-center py-20 text-accent-grey">Tournament not found.</div>;
   if (tournament.format !== 'GROUP_SINGLE') return <div className="p-10 text-center text-accent-grey">This tournament does not have a group stage. <Link to={`/tournament/${tournament.id}/bracket`} className="text-primary">Open bracket</Link></div>;
@@ -526,10 +567,11 @@ export const GroupStage = () => {
                               disabled={userRole === 'VIEWER' || (tournament.status === 'DRAFT' && !groupMatchesComplete(tournament))}
                             />
                           </div>
-                          {match.scheduledTime && <span className="text-xs font-medium text-accent-grey">
-                            {formatScheduledTime(match.scheduledTime, match.durationMinutes ?? 20)}
-                            {match.screenNumber ? ` · Screen ${match.screenNumber}` : ''}
-                          </span>}
+                          <div className="flex flex-wrap justify-center gap-x-2 text-xs font-medium text-accent-grey" aria-label="Match time and screen">
+                            <span>{match.scheduledTime ? formatScheduledTime(match.scheduledTime, match.durationMinutes ?? 20) : 'Time TBD'}</span>
+                            <span>·</span>
+                            <span>Screen {match.screenNumber ?? 'TBD'}</span>
+                          </div>
                         </div>
                         {userRole === 'ORGANIZER' && tournament.status === 'DRAFT' ? (
                           <select
