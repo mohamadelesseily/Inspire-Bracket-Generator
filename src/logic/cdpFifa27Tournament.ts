@@ -46,13 +46,13 @@ export const createCDPFifa27Schedule = (groups: Group[], participants: Participa
   // Each row is a 20 minute slot; its six entries map to Screens 1–6.
   const scheduleSlots: Array<[string, number[]]> = [
     ['17:00', [0, 6, 7, 8, 14, 15]],
-    ['17:20', [0, 1, 7, 8, 9, 15]],
-    ['17:40', [0, 1, 2, 8, 9, 10]],
-    ['18:00', [1, 2, 3, 9, 10, 11]],
+    ['17:20', [0, 13, 7, 8, 9, 15]],
+    ['17:40', [0, 13, 2, 8, 9, 10]],
+    ['18:00', [13, 2, 3, 9, 10, 11]],
     ['18:20', [2, 3, 4, 10, 11, 12]],
-    ['18:40', [3, 4, 5, 11, 12, 13]],
-    ['19:00', [4, 5, 6, 12, 13, 14]],
-    ['19:20', [5, 6, 7, 13, 14, 15]]
+    ['18:40', [3, 4, 5, 11, 12, 1]],
+    ['19:00', [4, 5, 6, 12, 1, 14]],
+    ['19:20', [5, 6, 7, 1, 14, 15]]
   ];
   const scheduledFixtures = new Map<number, { time: string; screen: number }>();
   const fixtureRoundByGroup = new Map<number, number>();
